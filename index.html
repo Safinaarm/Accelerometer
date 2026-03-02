@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accelerometer Sender</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+    h1 { margin-bottom: 24px; }
+    .card {
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 16px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .value { font-size: 1.5rem; margin: 8px 0; }
+    button {
+      width: 48%;
+      padding: 16px;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 12px;
+      margin: 8px;
+      cursor: pointer;
+    }
+    .start { background: #22c55e; color: white; }
+    .stop   { background: #ef4444; color: white; }
+    .status { margin-top: 20px; font-size: 1.3rem; font-weight: bold; }
+    .info { font-size: 1rem; color: #94a3b8; margin-top: 12px; }
+  </style>
+</head>
+<body>
+
+<h1>📱 Accel Sender</h1>
+
+<div class="card">
+  <div class="value">X: <span id="x">—</span></div>
+  <div class="value">Y: <span id="y">—</span></div>
+  <div class="value">Z: <span id="z">—</span></div>
+  <div class="value">Magnitude: <span id="mag">—</span></div>
+</div>
+
+<div>
+  <button class="start" onclick="startSensor()">START</button>
+  <button class="stop" onclick="stopSensor()">STOP</button>
+</div>
+
+<div class="status" id="status">Sensor OFF</div>
+<div class="info" id="deviceInfo">Detecting device...</div>
+
+<script>
+const DEVICE_ID = "dev-001";
+const SERVER_URL = "https://script.google.com/macros/s/AKfycbxQHTQUlAMTpFOANC_Kk_xDWpnmw4BnKeEH9cqcqHiAyLcRfST5a5SByN-J6yy8adgXow/exec";
+
+let sensorActive = false;
+let samples = [];
+let sendTimer;
+let isMobile = false;
+let motionType = 'none'; // 'real' atau 'mouse'
+
+function getMagnitude(x, y, z) {
+  return Math.sqrt(x*x + y*y + z*z).toFixed(2);
+}
+
+function updateUI(x, y, z) {
+  document.getElementById("x").textContent = x.toFixed(2);
+  document.getElementById("y").textContent = y.toFixed(2);
+  document.getElementById("z").textContent = z.toFixed(2);
+  const mag = getMagnitude(x, y, z);
+  document.getElementById("mag").textContent = mag;
+
+  const statusEl = document.getElementById("status");
+  if (Math.abs(mag - 9.8) < 1) {
+    statusEl.textContent = "🟢 Stabil (gravitasi normal)";
+  } else if (mag > 0.5) {
+    statusEl.textContent = "🟡 Bergerak! Mag: " + mag;
+  } else {
+    statusEl.textContent = "⚪ Tidak ada gerakan terdeteksi";
+  }
+}
+
+function startSensor() {
+  if (sensorActive) return;
+  sensorActive = true;
+
+  // Deteksi device
+  isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  document.getElementById("deviceInfo").textContent = isMobile 
+    ? "Device: Mobile/Tablet → Pakai accelerometer asli" 
+    : "Device: Laptop/Desktop → Pakai mouse untuk simulasi gerakan";
+
+  if (isMobile) {
+    // Mobile: pakai accelerometer real
+    document.getElementById("status").textContent = "🟢 Mencoba akses sensor...";
+
+    const tryRealMotion = () => {
+      window.addEventListener("devicemotion", onRealMotion);
+      sendTimer = setInterval(sendBatch, 3000);
+    };
+
+    if (typeof DeviceMotionEvent.requestPermission === 'function') {
+      // iOS 13+
+      DeviceMotionEvent.requestPermission()
+        .then(perm => {
+          if (perm === "granted") {
+            tryRealMotion();
+          } else {
+            alert("Izin sensor ditolak");
+            stopSensor();
+          }
+        })
+        .catch(err => {
+          alert("Error izin: " + err);
+          stopSensor();
+        });
+    } else {
+      tryRealMotion();
+    }
+  } else {
+    // Desktop fallback: simulasi dengan mouse movement
+    document.getElementById("status").textContent = "🟢 Sensor simulasi aktif – Gerakkan mouse!";
+    window.addEventListener("mousemove", onMouseSimulate);
+    sendTimer = setInterval(sendBatch, 3000);
+  }
+}
+
+function stopSensor() {
+  sensorActive = false;
+  window.removeEventListener("devicemotion", onRealMotion);
+  window.removeEventListener("mousemove", onMouseSimulate);
+  clearInterval(sendTimer);
+  document.getElementById("status").textContent = "🔴 Sensor OFF";
+  updateUI(0, 0, 0); // reset tampilan
+}
+
+function onRealMotion(event) {
+  if (!sensorActive) return;
+  const acc = event.accelerationIncludingGravity || {x:0, y:0, z:0};
+  const x = acc.x ?? 0;
+  const y = acc.y ?? 0;
+  const z = acc.z ?? 0;
+  updateUI(x, y, z);
+  samples.push({ t: Date.now(), x, y, z });
+  console.log(`Real motion: x=${x.toFixed(2)}, y=${y.toFixed(2)}, z=${z.toFixed(2)}`);
+}
+
+let prevMouseX = 0, prevMouseY = 0;
+function onMouseSimulate(event) {
+  if (!sensorActive) return;
+
+  const dx = (event.clientX - prevMouseX) * 0.05; // sensitivitas
+  const dy = (event.clientY - prevMouseY) * 0.05;
+
+  // Simulasi percepatan sederhana (mouse cepat = goyang besar)
+  const x = dx;
+  const y = dy;
+  const z = 9.8 + (Math.random() * 0.2 - 0.1); // tambah noise kecil biar mirip real
+
+  updateUI(x, y, z);
+  samples.push({ t: Date.now(), x, y, z });
+
+  prevMouseX = event.clientX;
+  prevMouseY = event.clientY;
+
+  console.log(`Mouse sim: x=${x.toFixed(2)}, y=${y.toFixed(2)}, z=${z.toFixed(2)}`);
+}
+
+function sendBatch() {
+  if (samples.length === 0) return;
+  console.log(`Mengirim ${samples.length} sampel...`);
+
+  fetch(SERVER_URL + "?path=telemetry/accel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_id: DEVICE_ID,
+      samples: samples
+    })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.ok) {
+      console.log(`Sukses kirim ${res.accepted} sampel`);
+      samples = [];
+    } else {
+      console.warn("Server tolak:", res.message);
+    }
+  })
+  .catch(err => console.error("Gagal kirim:", err));
+}
+</script>
+
+</body>
+</html>
