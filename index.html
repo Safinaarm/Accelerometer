@@ -58,10 +58,9 @@
 <script>
 const DEVICE_ID = "dev-001";
 const SERVER_URL = "https://script.google.com/macros/s/AKfycbxQHTQUlAMTpFOANC_Kk_xDWpnmw4BnKeEH9cqcqHiAyLcRfST5a5SByN-J6yy8adgXow/exec";
-// const SPREADSHEET_ID = "1tKSOoq2u9R-jCYhSYJk70JdXDh7nLI7BwJFBF8DRe8E"; // tidak dipakai di sini, sudah di gs
 
 let sensorActive = false;
-let samples = [];
+let samples = []; // array untuk simpan data sementara
 let sendTimer;
 let isMobile = false;
 let motionListenerAdded = false;
@@ -112,7 +111,7 @@ function startSensor() {
       motionListenerAdded = true;
       window.addEventListener("devicemotion", onRealMotion, { passive: true });
       console.log("Listener accelerometer ditambahkan");
-      sendTimer = setInterval(sendLatest, 10000); // 10 detik sekali kirim 1 data
+      sendTimer = setInterval(sendLatest, 10000); // kirim setiap 10 detik
       setTimeout(checkMotionStatus, 5000);
     };
 
@@ -179,21 +178,22 @@ function checkMotionStatus() {
   document.getElementById("status").textContent = "🟠 Sensor ON tapi nol? Goyang kuat atau cek izin browser";
 }
 
-// Fungsi baru: kirim HANYA 1 data terbaru setiap 10 detik
+// Kirim HANYA 1 data terbaru setiap 10 detik
 function sendLatest() {
   if (samples.length === 0) {
-    console.log("Tidak ada data baru untuk dikirim");
+    console.log("Tidak ada data baru, skip kirim");
     return;
   }
 
-  // Ambil sample terakhir saja
+  // Ambil data TERAKHIR (paling baru)
   const latestSample = samples[samples.length - 1];
+
   const payload = {
     device_id: DEVICE_ID,
-    samples: [latestSample]  // hanya 1 item
+    samples: [latestSample]  // hanya 1 item di array
   };
 
-  console.log(`Kirim 1 data terbaru (t: ${latestSample.t})`);
+  console.log(`Kirim 1 data terbaru pada ${new Date(latestSample.t).toLocaleTimeString()}`);
 
   fetch(SERVER_URL + "?path=telemetry/accel", {
     method: "POST",
@@ -202,8 +202,8 @@ function sendLatest() {
     body: JSON.stringify(payload)
   })
   .then(() => {
-    console.log("Fetch POST 1 data dikirim (no-cors)");
-    samples = []; // reset semua setelah kirim (biar tidak numpuk)
+    console.log("Fetch 1 data dikirim sukses (no-cors mode)");
+    samples = []; // reset array supaya tidak numpuk
   })
   .catch(err => console.error("Fetch gagal:", err));
 }
