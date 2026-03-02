@@ -58,7 +58,7 @@
 <script>
 const DEVICE_ID = "dev-001";
 const SERVER_URL = "https://script.google.com/macros/s/AKfycbxQHTQUlAMTpFOANC_Kk_xDWpnmw4BnKeEH9cqcqHiAyLcRfST5a5SByN-J6yy8adgXow/exec";
-const SPREADSHEET_ID = "1tKSOoq2u9R-jCYhSYJk70JdXDh7nLI7BwJFBF8DRe8E"; // <-- ID SPS kamu ditambahkan di sini
+// const SPREADSHEET_ID = "1tKSOoq2u9R-jCYhSYJk70JdXDh7nLI7BwJFBF8DRe8E"; // tidak dipakai di sini, sudah di gs
 
 let sensorActive = false;
 let samples = [];
@@ -112,7 +112,7 @@ function startSensor() {
       motionListenerAdded = true;
       window.addEventListener("devicemotion", onRealMotion, { passive: true });
       console.log("Listener accelerometer ditambahkan");
-      sendTimer = setInterval(sendBatch, 3000);
+      sendTimer = setInterval(sendLatest, 10000); // 10 detik sekali kirim 1 data
       setTimeout(checkMotionStatus, 5000);
     };
 
@@ -132,7 +132,7 @@ function startSensor() {
     }
   } else {
     window.addEventListener("mousemove", onMouseSimulate);
-    sendTimer = setInterval(sendBatch, 3000);
+    sendTimer = setInterval(sendLatest, 10000);
     document.getElementById("status").textContent = "🟢 Sensor ON (simulasi) – Gerakkan mouse!";
   }
 }
@@ -179,22 +179,31 @@ function checkMotionStatus() {
   document.getElementById("status").textContent = "🟠 Sensor ON tapi nol? Goyang kuat atau cek izin browser";
 }
 
-function sendBatch() {
-  if (samples.length === 0) return;
-  console.log(`Kirim batch: ${samples.length} sampel`);
+// Fungsi baru: kirim HANYA 1 data terbaru setiap 10 detik
+function sendLatest() {
+  if (samples.length === 0) {
+    console.log("Tidak ada data baru untuk dikirim");
+    return;
+  }
+
+  // Ambil sample terakhir saja
+  const latestSample = samples[samples.length - 1];
+  const payload = {
+    device_id: DEVICE_ID,
+    samples: [latestSample]  // hanya 1 item
+  };
+
+  console.log(`Kirim 1 data terbaru (t: ${latestSample.t})`);
 
   fetch(SERVER_URL + "?path=telemetry/accel", {
     method: "POST",
     mode: "no-cors",
     headers: { "Content-Type": "text/plain" },
-    body: JSON.stringify({
-      device_id: DEVICE_ID,
-      samples: samples
-    })
+    body: JSON.stringify(payload)
   })
   .then(() => {
-    console.log("Fetch POST dikirim (no-cors: response tidak terbaca)");
-    samples = []; // reset meski tidak bisa cek response
+    console.log("Fetch POST 1 data dikirim (no-cors)");
+    samples = []; // reset semua setelah kirim (biar tidak numpuk)
   })
   .catch(err => console.error("Fetch gagal:", err));
 }
