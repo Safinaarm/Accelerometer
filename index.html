@@ -6,7 +6,7 @@
   <title>Accelerometer Sender</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css">  <!-- style tetap dari file kamu -->
 </head>
 <body>
 
@@ -65,7 +65,7 @@
         <button id="startBtn" class="btn btn-start" onclick="startSensor()">
           <i class="fas fa-play"></i> START
         </button>
-        <button id="stopBtn" class="btn btn-stop" onclick="stopSensor()">
+        <button id="stopBtn" class="btn btn-stop" onclick="stopSensor()" disabled>
           <i class="fas fa-stop"></i> STOP
         </button>
       </div>
@@ -73,6 +73,164 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script>
+    // =====================================
+    // CONFIG
+    // =====================================
+    const DEVICE_ID = "dev-001";
+    const SERVER_URL = "https://script.google.com/macros/s/AKfycbxQHTQUlAMTpFOANC_Kk_xDWpnmw4BnKeEH9cqcqHiAyLcRfST5a5SByN-J6yy8adgXow/exec?path=telemetry/accel";
+    // ^ Ganti dengan URL Web App-mu yang sebenarnya
+
+    let isRunning = false;
+    let watchId = null;
+    let buffer = [];
+    const BATCH_SIZE = 5;          // kirim data setiap 5 sampel
+    const SENSOR_FREQUENCY = 60;   // Hz, sesuaikan kalau perlu
+
+    // =====================================
+    // Inisialisasi saat halaman load
+    // =====================================
+    window.addEventListener('load', () => {
+      const deviceInfoEl = document.getElementById('deviceInfo');
+      
+      if ('Accelerometer' in window) {
+        deviceInfoEl.innerHTML = '<i class="fas fa-check-circle"></i> Accelerometer tersedia';
+      } else {
+        deviceInfoEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Accelerometer tidak didukung';
+        document.getElementById('startBtn').disabled = true;
+      }
+
+      document.getElementById('sendLog').style.display = 'block';
+    });
+
+    // =====================================
+    // START Sensor
+    // =====================================
+    function startSensor() {
+      if (isRunning) return;
+      if (!('Accelerometer' in window)) {
+        alert('Perangkat ini tidak mendukung sensor accelerometer.');
+        return;
+      }
+
+      try {
+        const accel = new Accelerometer({ frequency: SENSOR_FREQUENCY });
+
+        accel.addEventListener('reading', () => {
+          const x = accel.x?.toFixed(2) ?? '—';
+          const y = accel.y?.toFixed(2) ?? '—';
+          const z = accel.z?.toFixed(2) ?? '—';
+          const mag = Math.sqrt(
+            Math.pow(accel.x || 0, 2) +
+            Math.pow(accel.y || 0, 2) +
+            Math.pow(accel.z || 0, 2)
+          ).toFixed(2);
+
+          document.getElementById('x').textContent = x;
+          document.getElementById('y').textContent = y;
+          document.getElementById('z').textContent = z;
+          document.getElementById('mag').textContent = mag;
+
+          // Tambah ke buffer untuk dikirim batch
+          buffer.push({
+            t: Date.now(),
+            x: accel.x || 0,
+            y: accel.y || 0,
+            z: accel.z || 0
+          });
+
+          if (buffer.length >= BATCH_SIZE) {
+            sendBatch();
+          }
+        });
+
+        accel.addEventListener('error', (event) => {
+          console.error('Accelerometer error:', event.error);
+          document.getElementById('sendLogText').textContent = 'Error sensor: ' + event.error;
+        });
+
+        accel.start();
+        watchId = accel;
+
+        isRunning = true;
+        document.getElementById('statusBadge').className = 'status-badge status-on';
+        document.getElementById('statusText').textContent = 'Sensor ON';
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        document.getElementById('sendLogText').textContent = 'Mengirim data...';
+
+      } catch (err) {
+        console.error('Gagal memulai sensor:', err);
+        alert('Gagal memulai sensor: ' + err.message);
+      }
+    }
+
+    // =====================================
+    // STOP Sensor & kirim status "stopped"
+    // =====================================
+    function stopSensor() {
+      if (!isRunning) return;
+
+      if (watchId) {
+        watchId.stop();
+        watchId = null;
+      }
+
+      // Kirim sisa buffer (jika ada) + status stopped
+      sendBatch(true);
+
+      isRunning = false;
+      buffer = [];  // clear buffer
+
+      document.getElementById('statusBadge').className = 'status-badge status-off';
+      document.getElementById('statusText').textContent = 'Sensor OFF';
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('sendLogText').textContent = 'Pengiriman dihentikan';
+
+      // Reset tampilan nilai sensor
+      document.getElementById('x').textContent = '—';
+      document.getElementById('y').textContent = '—';
+      document.getElementById('z').textContent = '—';
+      document.getElementById('mag').textContent = '—';
+    }
+
+    // =====================================
+    // Kirim batch data (atau status saja saat stop)
+    // =====================================
+    function sendBatch(isStopping = false) {
+      const payload = {
+        device_id: DEVICE_ID,
+        samples: isStopping ? [] : buffer.slice()  // copy array
+      };
+
+      if (isStopping) {
+        payload.status = "stopped";
+      }
+
+      fetch(SERVER_URL, {
+        method: 'POST',
+        mode: 'no-cors',          // penting untuk Google Apps Script kadang
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(() => {
+        // Karena no-cors, kita tidak bisa baca response, jadi anggap sukses
+        if (!isStopping) {
+          document.getElementById('sendLogText').textContent = 
+            `Terkirim ${buffer.length} sampel`;
+          buffer = [];  // clear setelah kirim
+        } else {
+          document.getElementById('sendLogText').textContent = 'Status stopped dikirim';
+        }
+      })
+      .catch(err => {
+        console.error('Gagal kirim:', err);
+        document.getElementById('sendLogText').textContent = 'Gagal mengirim data';
+      });
+    }
+  </script>
 </body>
 </html>
