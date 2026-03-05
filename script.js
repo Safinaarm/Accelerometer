@@ -1,5 +1,5 @@
 const DEVICE_ID  = "dev-001";
-const SERVER_URL = "https://script.google.com/macros/s/AKfycbyAsRkqELOCszZrVhwYQ7AoE63aKor36LAzM_gypfDiTb6vAbv3EduagieojCbYWPDC/exec";
+const SERVER_URL = "https://script.google.com/macros/s/AKfycbyl5XtrpnRBRS2BfemGa59jf19w2r_Gj47D0ogeKXBv2AUwSeEsheeNPw4DRLluNIrd/exec";
 
 let sensorActive       = false;
 let samples            = [];
