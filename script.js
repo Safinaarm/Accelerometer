@@ -1,5 +1,5 @@
 const DEVICE_ID  = "dev-001";  // Ganti kalau pakai device lain
-const SERVER_URL = "https://script.google.com/macros/s/AKfycbyJlWA2t3iNyrtFBgdKQopLW3TdiZMQ9ezeLk25BzkIjzPVuXWtUVsgLYPw-XT3cyHX/exec";  
+const SERVER_URL = "https://script.google.com/macros/s/AKfycbxrQreOZe0bZisAAmT5e0Owc_s9cphNlh0G3k9wRM3XX7Ilyo3j-r5qBEzIoEtf_DE7/exec";  
 // <-- PASTIKAN PAKAI URL DARI DEPLOYMENT TERBARU (yang "Anyone")
 
 let sensorActive       = false;
