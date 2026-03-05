@@ -1,5 +1,6 @@
-const DEVICE_ID  = "dev-001";
-const SERVER_URL = "https://script.google.com/macros/s/AKfycbyl5XtrpnRBRS2BfemGa59jf19w2r_Gj47D0ogeKXBv2AUwSeEsheeNPw4DRLluNIrd/exec";
+const DEVICE_ID  = "dev-001";  // Ganti kalau pakai device lain
+const SERVER_URL = "https://script.google.com/macros/s/AKfycbyJlWA2t3iNyrtFBgdKQopLW3TdiZMQ9ezeLk25BzkIjzPVuXWtUVsgLYPw-XT3cyHX/exec";  
+// <-- PASTIKAN PAKAI URL DARI DEPLOYMENT TERBARU (yang "Anyone")
 
 let sensorActive       = false;
 let samples            = [];
@@ -29,7 +30,7 @@ function updateUI(x = 0, y = 0, z = 0) {
   document.getElementById("y").textContent   = y.toFixed(2);
   document.getElementById("z").textContent   = z.toFixed(2);
   const mag = getMagnitude(x, y, z);
-  document.getElementById("mag").textContent = mag;
+  document.getElementById("mag").textContent = mag.toFixed(2);
 
   if (!motionDataReceived) {
     setStatus("Sensor ON – Menunggu data pertama...", "info");
@@ -47,7 +48,7 @@ function updateUI(x = 0, y = 0, z = 0) {
 }
 
 function getMagnitude(x, y, z) {
-  return Math.sqrt(x * x + y * y + z * z).toFixed(2);
+  return Math.sqrt(x * x + y * y + z * z);
 }
 
 // ── START ──
@@ -72,7 +73,7 @@ function startSensor() {
       if (motionListenerAdded) return;
       motionListenerAdded = true;
       window.addEventListener("devicemotion", onRealMotion, { passive: true });
-      sendTimer = setInterval(sendLatest, 10000);
+      sendTimer = setInterval(sendLatest, 10000);  // kirim setiap 10 detik
       setTimeout(checkMotionStatus, 5000);
     };
 
@@ -122,7 +123,7 @@ function onRealMotion(event) {
   samples.push({ t: Date.now(), x, y, z });
 }
 
-// ── Mouse Simulation ──
+// ── Mouse Simulation (untuk tes di laptop) ──
 let prevMouseX = 0, prevMouseY = 0;
 function onMouseSimulate(event) {
   if (!sensorActive) return;
@@ -144,7 +145,7 @@ function checkMotionStatus() {
   setStatus("Sensor ON tapi nol? Goyang kuat atau cek izin browser", "warning");
 }
 
-// ── Kirim 1 data terbaru setiap 10 detik ──
+// ── Kirim data ke Apps Script ──
 function sendLatest() {
   if (samples.length === 0) {
     console.log("Tidak ada data baru, skip kirim");
@@ -156,25 +157,28 @@ function sendLatest() {
   const payload = { device_id: DEVICE_ID, samples: [latest] };
   const waktu   = new Date(latest.t).toLocaleTimeString("id-ID");
 
-  console.log("Kirim 1 data terbaru pukul", waktu);
+  console.log("Kirim data pukul " + waktu);
   setSendLog("Mengirim data pukul " + waktu + "...", true);
 
   fetch(SERVER_URL + "?path=telemetry/accel", {
     method:  "POST",
-    mode:    "no-cors",
-    headers: { "Content-Type": "text/plain" },
-    body:    JSON.stringify(payload),
+    mode:    "no-cors",                          // bypass CORS strict
+    redirect: "follow",
+    headers: { 
+      "Content-Type": "text/plain;charset=utf-8" // simple request → no preflight
+    },
+    body:    JSON.stringify(payload)
   })
   .then(() => {
-    console.log("Data terkirim (no-cors mode)");
+    console.log("Data terkirim (no-cors)");
     setSendLog("✓ Terkirim pukul " + waktu, true);
-    samples = [];
+    samples = [];  // kosongkan setelah kirim
   })
   .catch(err => {
-    console.error("Fetch gagal:", err);
-    setSendLog("❌ Gagal kirim: " + err.message, true);
+    console.error("Fetch error:", err);
+    setSendLog("❌ Gagal kirim: " + (err.message || "Cek koneksi/URL"), true);
   });
 }
 
-// ── Init: disable stop button on load ──
+// Init: disable stop button saat load
 document.getElementById("stopBtn").disabled = true;
