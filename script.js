@@ -1,6 +1,6 @@
-const DEVICE_ID  = "dev-001";  // Ganti kalau pakai device lain
+const DEVICE_ID  = "dev-001";
 const SERVER_URL = "https://script.google.com/macros/s/AKfycbxrQreOZe0bZisAAmT5e0Owc_s9cphNlh0G3k9wRM3XX7Ilyo3j-r5qBEzIoEtf_DE7/exec";  
-// <-- PASTIKAN PAKAI URL DARI DEPLOYMENT TERBARU (yang "Anyone")
+// PASTIKAN INI SAMA PERSIS DENGAN URL YANG BERHASIL DI POSTMAN
 
 let sensorActive       = false;
 let samples            = [];
@@ -9,7 +9,7 @@ let isMobile           = false;
 let motionListenerAdded = false;
 let motionDataReceived = false;
 
-// ── Utility: Update status badge ──
+// ── Utility ──
 function setStatus(text, type) {
   const badge = document.getElementById("statusBadge");
   const span  = document.getElementById("statusText");
@@ -17,14 +17,12 @@ function setStatus(text, type) {
   badge.className  = "status-badge status-" + type;
 }
 
-// ── Utility: Update send log ──
 function setSendLog(text, show = true) {
   const el = document.getElementById("sendLog");
   el.style.display = show ? "flex" : "none";
   document.getElementById("sendLogText").textContent = text;
 }
 
-// ── Utility: Update sensor values in UI ──
 function updateUI(x = 0, y = 0, z = 0) {
   document.getElementById("x").textContent   = x.toFixed(2);
   document.getElementById("y").textContent   = y.toFixed(2);
@@ -51,15 +49,16 @@ function getMagnitude(x, y, z) {
   return Math.sqrt(x * x + y * y + z * z);
 }
 
-// ── START ──
+// ── START & STOP ──
 function startSensor() {
   if (sensorActive) return;
-  sensorActive       = true;
+  sensorActive = true;
   motionDataReceived = false;
   motionListenerAdded = false;
 
   document.getElementById("startBtn").disabled = true;
-  document.getElementById("stopBtn").disabled  = false;
+  document.getElementById("stopBtn").disabled = false;
+  document.getElementById("testBtn").disabled = false;
   setSendLog("Sensor aktif, menunggu data...", true);
   setStatus("Sensor ON – Memulai...", "info");
 
@@ -73,7 +72,7 @@ function startSensor() {
       if (motionListenerAdded) return;
       motionListenerAdded = true;
       window.addEventListener("devicemotion", onRealMotion, { passive: true });
-      sendTimer = setInterval(sendLatest, 10000);  // kirim setiap 10 detik
+      sendTimer = setInterval(sendLatest, 10000);
       setTimeout(checkMotionStatus, 5000);
     };
 
@@ -94,24 +93,24 @@ function startSensor() {
   }
 }
 
-// ── STOP ──
 function stopSensor() {
-  sensorActive        = false;
+  sensorActive = false;
   motionListenerAdded = false;
   window.removeEventListener("devicemotion", onRealMotion);
   window.removeEventListener("mousemove", onMouseSimulate);
   clearInterval(sendTimer);
   sendTimer = null;
-  samples   = [];
+  samples = [];
 
   document.getElementById("startBtn").disabled = false;
-  document.getElementById("stopBtn").disabled  = true;
+  document.getElementById("stopBtn").disabled = true;
+  document.getElementById("testBtn").disabled = true;
   setStatus("Sensor OFF", "off");
   setSendLog("", false);
   updateUI(0, 0, 0);
 }
 
-// ── Real Device Motion ──
+// ── Sensor Handlers ──
 function onRealMotion(event) {
   if (!sensorActive) return;
   motionDataReceived = true;
@@ -123,29 +122,27 @@ function onRealMotion(event) {
   samples.push({ t: Date.now(), x, y, z });
 }
 
-// ── Mouse Simulation (untuk tes di laptop) ──
 let prevMouseX = 0, prevMouseY = 0;
 function onMouseSimulate(event) {
   if (!sensorActive) return;
   motionDataReceived = true;
   const dx = (event.clientX - prevMouseX) * 0.08;
   const dy = (event.clientY - prevMouseY) * 0.08;
-  const x  = dx;
-  const y  = dy;
-  const z  = 9.8 + (Math.random() * 0.4 - 0.2);
+  const x = dx;
+  const y = dy;
+  const z = 9.8 + (Math.random() * 0.4 - 0.2);
   updateUI(x, y, z);
   samples.push({ t: Date.now(), x, y, z });
   prevMouseX = event.clientX;
   prevMouseY = event.clientY;
 }
 
-// ── Check if motion data ever arrived ──
 function checkMotionStatus() {
   if (!sensorActive || motionDataReceived) return;
   setStatus("Sensor ON tapi nol? Goyang kuat atau cek izin browser", "warning");
 }
 
-// ── Kirim data ke Apps Script ──
+// ── Kirim Data ──
 function sendLatest() {
   if (samples.length === 0) {
     console.log("Tidak ada data baru, skip kirim");
@@ -153,32 +150,71 @@ function sendLatest() {
     return;
   }
 
-  const latest  = samples[samples.length - 1];
+  const latest = samples[samples.length - 1];
   const payload = { device_id: DEVICE_ID, samples: [latest] };
-  const waktu   = new Date(latest.t).toLocaleTimeString("id-ID");
+  const waktu = new Date(latest.t).toLocaleTimeString("id-ID");
 
-  console.log("Kirim data pukul " + waktu);
+  console.log("Mencoba kirim ke:", SERVER_URL + "?path=telemetry/accel");
+  console.log("Payload:", JSON.stringify(payload, null, 2));
   setSendLog("Mengirim data pukul " + waktu + "...", true);
 
   fetch(SERVER_URL + "?path=telemetry/accel", {
-    method:  "POST",
-    mode:    "no-cors",                          // bypass CORS strict
-    redirect: "follow",
-    headers: { 
-      "Content-Type": "text/plain;charset=utf-8" // simple request → no preflight
+    method: "POST",
+    mode: "cors",
+    cache: "no-cache",
+    credentials: "omit",
+    headers: {
+      "Content-Type": "application/json"
     },
-    body:    JSON.stringify(payload)
+    body: JSON.stringify(payload)
   })
-  .then(() => {
-    console.log("Data terkirim (no-cors)");
-    setSendLog("✓ Terkirim pukul " + waktu, true);
-    samples = [];  // kosongkan setelah kirim
+  .then(response => {
+    console.log("Status dari server:", response.status, response.statusText);
+    if (!response.ok) {
+      return response.text().then(text => { throw new Error(`Server error ${response.status}: ${text}`); });
+    }
+    return response.text();
+  })
+  .then(text => {
+    console.log("Response body:", text);
+    setSendLog("✓ Terkirim pukul " + waktu + " ✓", true);
+    samples = [];
   })
   .catch(err => {
-    console.error("Fetch error:", err);
-    setSendLog("❌ Gagal kirim: " + (err.message || "Cek koneksi/URL"), true);
+    console.error("Fetch gagal:", err);
+    setSendLog("❌ Gagal kirim: " + err.message, true);
   });
 }
 
-// Init: disable stop button saat load
+// ── Tes Manual ──
+function testSend() {
+  const testPayload = {
+    device_id: DEVICE_ID,
+    samples: [{
+      t: Date.now(),
+      x: 1.23,
+      y: 4.56,
+      z: 9.81
+    }]
+  };
+
+  console.log("Tes manual - Mencoba kirim:", JSON.stringify(testPayload, null, 2));
+
+  fetch(SERVER_URL + "?path=telemetry/accel", {
+    method: "POST",
+    mode: "cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(testPayload)
+  })
+  .then(r => {
+    console.log("Tes status:", r.status);
+    if (!r.ok) return r.text().then(t => { throw new Error(t || r.statusText); });
+    return r.text();
+  })
+  .then(t => console.log("Tes sukses:", t))
+  .catch(e => console.error("Tes gagal:", e));
+}
+
+// Init
 document.getElementById("stopBtn").disabled = true;
+document.getElementById("testBtn").disabled = true;
