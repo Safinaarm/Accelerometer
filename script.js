@@ -1,6 +1,5 @@
 const DEVICE_ID  = "dev-001";
 const SERVER_URL = "https://script.google.com/macros/s/AKfycbxrQreOZe0bZisAAmT5e0Owc_s9cphNlh0G3k9wRM3XX7Ilyo3j-r5qBEzIoEtf_DE7/exec";  
-// PASTIKAN INI SAMA PERSIS DENGAN URL YANG BERHASIL DI POSTMAN
 
 let sensorActive       = false;
 let samples            = [];
@@ -39,7 +38,7 @@ function updateUI(x = 0, y = 0, z = 0) {
   if (Math.abs(magNum - 9.8) < 1.5) {
     setStatus("Sensor ON – Stabil (gravitasi normal)", "on");
   } else if (magNum > 1) {
-    setStatus("Sensor ON – Bergerak! Mag: " + mag, "warning");
+    setStatus("Sensor ON – Bergerak! Mag: " + mag.toFixed(2), "warning");
   } else {
     setStatus("Sensor ON – Data minim, goyang lebih kuat", "warning");
   }
@@ -72,7 +71,7 @@ function startSensor() {
       if (motionListenerAdded) return;
       motionListenerAdded = true;
       window.addEventListener("devicemotion", onRealMotion, { passive: true });
-      sendTimer = setInterval(sendLatest, 10000);
+      sendTimer = setInterval(sendLatest, 10000); // kirim tiap 10 detik
       setTimeout(checkMotionStatus, 5000);
     };
 
@@ -142,7 +141,7 @@ function checkMotionStatus() {
   setStatus("Sensor ON tapi nol? Goyang kuat atau cek izin browser", "warning");
 }
 
-// ── Kirim Data ──
+// ── Kirim Data (versi fix CORS) ──
 function sendLatest() {
   if (samples.length === 0) {
     console.log("Tidak ada data baru, skip kirim");
@@ -160,29 +159,23 @@ function sendLatest() {
 
   fetch(SERVER_URL + "?path=telemetry/accel", {
     method: "POST",
-    mode: "cors",
+    mode: "no-cors",  // bypass preflight & CORS block dari origin null
     cache: "no-cache",
-    credentials: "omit",
+    redirect: "follow",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "text/plain"  // simple request, no preflight
     },
     body: JSON.stringify(payload)
   })
-  .then(response => {
-    console.log("Status dari server:", response.status, response.statusText);
-    if (!response.ok) {
-      return response.text().then(text => { throw new Error(`Server error ${response.status}: ${text}`); });
-    }
-    return response.text();
-  })
-  .then(text => {
-    console.log("Response body:", text);
-    setSendLog("✓ Terkirim pukul " + waktu + " ✓", true);
-    samples = [];
+  .then(() => {
+    // no-cors → response ga bisa dibaca, tapi kalau sampai sini berarti request dikirim
+    console.log("Request berhasil dikirim (no-cors mode)");
+    setSendLog("✓ Dikirim pukul " + waktu + " (cek sheet Accel)", true);
+    samples = []; // kosongkan setelah kirim
   })
   .catch(err => {
-    console.error("Fetch gagal:", err);
-    setSendLog("❌ Gagal kirim: " + err.message, true);
+    console.error("Fetch gagal (mungkin CORS atau network):", err);
+    setSendLog("❌ Gagal kirim: " + (err.message || "Cek koneksi / buka via Live Server"), true);
   });
 }
 
@@ -202,17 +195,18 @@ function testSend() {
 
   fetch(SERVER_URL + "?path=telemetry/accel", {
     method: "POST",
-    mode: "cors",
-    headers: { "Content-Type": "application/json" },
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain" },
     body: JSON.stringify(testPayload)
   })
-  .then(r => {
-    console.log("Tes status:", r.status);
-    if (!r.ok) return r.text().then(t => { throw new Error(t || r.statusText); });
-    return r.text();
+  .then(() => {
+    console.log("Tes manual dikirim (no-cors)");
+    setSendLog("Tes manual: ✓ Dikirim (cek sheet)", true);
   })
-  .then(t => console.log("Tes sukses:", t))
-  .catch(e => console.error("Tes gagal:", e));
+  .catch(err => {
+    console.error("Tes manual gagal:", err);
+    setSendLog("Tes manual: ❌ " + err.message, true);
+  });
 }
 
 // Init
